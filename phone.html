@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Phone</title>
+<script src="https://cdn.jsdelivr.net/npm/simple-peer@9/simplepeer.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.4.4/libs/lz-string.min.js"></script>
+</head>
+
+<body style="margin:0; background:black;">
+
+<video id="video" autoplay playsinline style="display:none;"></video>
+<div id="qr" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);"></div>
+<div id="status" style="position:absolute; top:10px; left:10px; color:white;">等待連接...</div>
+<div id="inputDiv" style="position:absolute; bottom:10px; left:10px; color:white;">
+  <p>掃描電腦的QR碼，輸入內容：</p>
+  <input type="text" id="signalInput" style="width:300px;">
+  <button onclick="setSignal()">設置信號</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+let peer;
+let handData = { x: 0.5, y: 0.5 };
+
+const urlParams = new URLSearchParams(window.location.search);
+const connectParam = urlParams.get('connect');
+
+if (connectParam) {
+  peer = new SimplePeer({ initiator: false, trickle: false });
+
+  peer.on('signal', data => {
+    const signalData = LZString.compressToEncodedURIComponent(JSON.stringify(data));
+    document.getElementById("qr").innerHTML = "";
+    new QRCode(document.getElementById("qr"), {
+      text: `phone:${connectParam}:${signalData}`,
+      width: 200,
+      height: 200,
+      correctLevel: QRCode.CorrectLevel.L
+    });
+  });
+
+  peer.on('connect', () => {
+    document.getElementById("status").innerHTML = "已連接";
+    document.getElementById("qr").style.display = "none";
+    startCamera();
+  });
+
+  peer.on('error', err => {
+    console.error('WebRTC error:', err);
+  });
+
+  // 等待電腦的signal，但這裡沒有，所以需要手動設置？不，peer會自動生成signal。
+  // 實際上，對於非initiator，signal會在peer創建後觸發，但需要電腦的offer。
+  // 問題：手機如何得到電腦的offer？
+  // 我需要讓手機顯示QR碼等待電腦掃描offer。
+
+  // 實際上，流程是：
+  // 電腦顯示connect:ID
+  // 手機掃描，訪問phone.html?connect=ID
+  // 手機顯示QR碼等待
+  // 但手機需要電腦的offer。
+
+  // 我需要讓手機等待輸入電腦的offer。
+
+  // 讓手機顯示輸入框，讓用戶輸入電腦的QR碼（answer格式）。
+
+  // 不，流程應該是：
+  // 電腦顯示connect:ID
+  // 手機掃描，訪問phone.html?connect=ID
+  // 手機顯示QR碼：offer:ID:signal
+  // 電腦掃描，得到offer，設置peer.signal(offer)
+  // 然後電腦生成answer，顯示answer:ID:answer
+  // 手機掃描，設置peer.signal(answer)
+
+  // 所以需要兩個QR碼交換。
+
+  // 讓我修改。
+
+  // 手機訪問後，顯示輸入框讓用戶輸入電腦的answer QR碼。
+
+  // 電腦的第二個QR碼是answer:ID:signal
+
+  // 手機掃描，輸入到輸入框，設置signal。
+
+  // 然後手機生成自己的signal，顯示QR碼。
+
+  // 電腦掃描手機的QR碼，設置。
+
+  // 但手機的QR碼是什麼格式？
+
+  // 讓手機顯示QR碼：phone:ID:signal
+
+  // 電腦掃描，解析，設置。
+
+  // 是的。
+
+  // 讓我修改phone.html。
+
+  // 添加輸入框。
+
+} else {
+  document.getElementById("status").innerHTML = "無效的QR碼";
+}
+
+function setSignal() {
+  const signalText = document.getElementById("signalInput").value;
+  const parts = signalText.split(':');
+  if (parts[0] === 'answer' && parts[1] === connectParam) {
+    try {
+      const signal = JSON.parse(LZString.decompressFromEncodedURIComponent(parts[2]));
+      peer.signal(signal);
+    } catch (e) {
+      alert("無效的信號數據");
+    }
+  } else {
+    alert("無效的QR碼或ID不匹配");
+  }
+}
+
+function startCamera() {
+  const video = document.getElementById("video");
+
+  const hands = new Hands({
+    locateFile: (f) =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+  });
+
+  hands.setOptions({
+    maxNumHands: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.7
+  });
+
+  hands.onResults((res) => {
+    if (res.multiHandLandmarks.length > 0) {
+      const finger = res.multiHandLandmarks[0][8];
+      handData = {
+        x: finger.x,
+        y: finger.y
+      };
+      if (peer && peer.connected) {
+        peer.send(JSON.stringify(handData));
+      }
+    }
+  });
+
+  const camera = new Camera(video, {
+    onFrame: async () => {
+      await hands.send({ image: video });
+    },
+    width: 640,
+    height: 480
+  });
+
+  camera.start();
+}
+</script>
+
+</body>
+</html>
